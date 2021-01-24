@@ -6,13 +6,16 @@ SHOPPING_LIST,
 MP_USER,
 -- RECIPE,
 -- INGREDIENT,
-WEEKLY_PLAN,
+MEAL_PLAN,
 DAILY_PLAN,
 SAVED_RECIPE,
 DAILY_PLAN_RECIPE,
 SHOPPING_LIST_ENTRY;
 
-DROP TYPE IF EXISTS DIET, ACTIVITY_FACTOR, SEX;
+DROP TYPE IF EXISTS DIET, ACTIVITY_FACTOR, SEX, MEASURE;
+
+DROP FUNCTION IF EXISTS delete_zero_shopping_list_entries;
+-- DROP TRIGGER IF EXISTS trigger_delete_zero_shopping_list_entries ON SHOPPING_LIST_ENTRY;
 
 CREATE TYPE DIET AS ENUM ('omni', 'vegan', 'vegetarian', 'glutenFree');
 
@@ -28,6 +31,7 @@ CREATE TYPE DIET AS ENUM ('omni', 'vegan', 'vegetarian', 'glutenFree');
 -- If you are extra active (very hard exercise/sports & a physical job) : Calorie-Calculation = BMR x 1.9
 CREATE TYPE ACTIVITY_FACTOR AS ENUM ('none', 'light', 'moderate', 'very', 'extra');
 CREATE TYPE SEX AS ENUM ('m', 'f');
+CREATE TYPE MEASURE AS ENUM ('g', 'ml');
 
 
 CREATE TABLE SHOPPING_LIST (
@@ -38,15 +42,15 @@ CREATE TABLE SHOPPING_LIST (
 CREATE TABLE MP_USER (
     mp_user_id SERIAL UNIQUE NOT NULL,
     username VARCHAR(255) UNIQUE NOT NULL,
-    height INT,
-    weight INT,
-    sex SEX,
-    birth_year INT,
-    diet_type DIET,
-    activity_factor ACTIVITY_FACTOR,
+    height INT NOT NULL,
+    weight INT NOT NULL,
+    sex SEX NOT NULL,
+    birth_year INT NOT NULL,
+    diet_type DIET NOT NULL,
+    activity_factor ACTIVITY_FACTOR NOT NULL,
     address VARCHAR(255),
-    shopping_list_id INT,
-    current_weekly_plan_id INT,
+    shopping_list_id INT NOT NULL,
+    current_meal_plan_id INT,
     PRIMARY KEY(mp_user_id),
     
     CONSTRAINT fk_shopping_list_id
@@ -64,56 +68,74 @@ CREATE TABLE MP_USER (
 --     PRIMARY KEY(ingredient_id)
 -- );
 
-CREATE TABLE WEEKLY_PLAN (
-    weekly_plan_id SERIAL UNIQUE NOT NULL,
-    mp_user_id INT,
-    is_current BOOLEAN,
-    PRIMARY KEY(weekly_plan_id),
+CREATE TABLE MEAL_PLAN (
+    meal_plan_id SERIAL UNIQUE NOT NULL,
+    mp_user_id INT NOT NULL,
+    is_current BOOLEAN NOT NULL DEFAULT TRUE,
+    daily_calories INT,
+    diet_type DIET,
+
+    PRIMARY KEY(meal_plan_id),
     CONSTRAINT fk_mp_user_id
         FOREIGN KEY(mp_user_id)
-            REFERENCES MP_USER(mp_user_id)
+            REFERENCES MP_USER(mp_user_id) ON DELETE CASCADE
 );
 
 ALTER TABLE MP_USER
-ADD CONSTRAINT fk_weekly_plan_id
-   FOREIGN KEY (current_weekly_plan_id)
-   REFERENCES WEEKLY_PLAN(weekly_plan_id);
+ADD CONSTRAINT fk_meal_plan_id
+   FOREIGN KEY (current_meal_plan_id)
+   REFERENCES MEAL_PLAN(meal_plan_id) ON DELETE SET NULL;
 
 CREATE TABLE DAILY_PLAN (
     daily_plan_id SERIAL UNIQUE NOT NULL,
-    weekly_plan_id INT,
+    meal_plan_id INT NOT NULL,
+    daily_plan_number INT NOT NULL, --The ith day of the plan
     PRIMARY KEY(daily_plan_id),
-    CONSTRAINT fk_weekly_plan_id
-        FOREIGN KEY(weekly_plan_id)
-            REFERENCES WEEKLY_PLAN(weekly_plan_id)
+    CONSTRAINT fk_meal_plan_id
+        FOREIGN KEY(meal_plan_id)
+            REFERENCES MEAL_PLAN(meal_plan_id) ON DELETE CASCADE
 );
 
+CREATE TABLE DAILY_PLAN_RECIPE (
+    daily_plan_id INT NOT NULL,
+    recipe_id INT NOT NULL,
+    recipe_number INT NOT NULL, --The ith recipe of the day
+    CONSTRAINT fk_daily_plan_id
+        FOREIGN KEY(daily_plan_id)
+            REFERENCES DAILY_PLAN(daily_plan_id) ON DELETE CASCADE,
+    PRIMARY KEY (daily_plan_id, recipe_id)
+);
 
 CREATE TABLE SAVED_RECIPE (
-    mp_user_id INT,
-    recipe_id INT,
+    mp_user_id INT NOT NULL,
+    recipe_id INT NOT NULL,
     CONSTRAINT fk_mp_user_id
         FOREIGN KEY(mp_user_id)
             REFERENCES MP_USER(mp_user_id),
     PRIMARY KEY(mp_user_id, recipe_id)
 );
 
-CREATE TABLE DAILY_PLAN_RECIPE (
-    daily_plan_id INT,
-    recipe_id INT,
-    CONSTRAINT fk_daily_plan_id
-        FOREIGN KEY(daily_plan_id)
-            REFERENCES DAILY_PLAN(daily_plan_id),
-    PRIMARY KEY (daily_plan_id, recipe_id)
-);
-
 CREATE TABLE SHOPPING_LIST_ENTRY(
     shopping_list_entry_id SERIAL UNIQUE NOT NULL,
-    shopping_list_id INT,
-    ingredient_id INT,
-    quantity VARCHAR(255),
+    shopping_list_id INT NOT NULL,
+    ingredient_id INT NOT NULL UNIQUE,
+    quantity INT NOT NULL,
+    measure MEASURE NOT NULL,
     CONSTRAINT fk_shopping_list_id
         FOREIGN KEY(shopping_list_id)
-            REFERENCES SHOPPING_LIST(shopping_list_id),
+            REFERENCES SHOPPING_LIST(shopping_list_id) ON DELETE CASCADE,
     PRIMARY KEY (shopping_list_entry_id)
 );
+
+CREATE FUNCTION delete_zero_shopping_list_entries() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+        BEGIN
+        DELETE FROM SHOPPING_LIST_ENTRY WHERE quantity <= 0;
+        RETURN NULL;
+        END;
+    $$;
+
+CREATE TRIGGER trigger_delete_zero_shopping_list_entries
+    AFTER UPDATE ON SHOPPING_LIST_ENTRY
+    EXECUTE PROCEDURE delete_zero_shopping_list_entries();
