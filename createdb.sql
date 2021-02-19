@@ -118,13 +118,15 @@ CREATE TABLE SAVED_RECIPE (
 CREATE TABLE SHOPPING_LIST_ENTRY(
     shopping_list_entry_id SERIAL UNIQUE NOT NULL,
     shopping_list_id INT NOT NULL,
-    ingredient_id INT NOT NULL UNIQUE,
+    ingredient_id INT NOT NULL,
+    ingredient_name VARCHAR(255) NOT NULL,
     quantity INT NOT NULL,
     measure MEASURE NOT NULL,
     CONSTRAINT fk_shopping_list_id
         FOREIGN KEY(shopping_list_id)
             REFERENCES SHOPPING_LIST(shopping_list_id) ON DELETE CASCADE,
-    PRIMARY KEY (shopping_list_entry_id)
+    PRIMARY KEY (shopping_list_entry_id),
+    UNIQUE (shopping_list_id, ingredient_id)
 );
 
 CREATE FUNCTION delete_zero_shopping_list_entries() RETURNS trigger
